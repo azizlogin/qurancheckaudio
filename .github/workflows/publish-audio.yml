@@ -3,9 +3,11 @@ name: Publish Urdu Audio Releases
 # Manually triggered from the Actions tab. Runs entirely on GitHub's
 # servers — checks out the LFS-tracked mp3s (fast, GitHub's own
 # network) and republishes them as plain Release assets, one release
-# per surah. Release assets aren't subject to Git LFS's 1GB/month
-# bandwidth cap, so this is what the app should actually download
-# from at runtime.
+# per surah, with a single zip of that surah's mp3s as the asset.
+#
+# Zipping (rather than one asset per ayah) keeps API calls low —
+# ~340 requests total instead of ~6,500 — to stay under GitHub's
+# hourly rate limit for the built-in GITHUB_TOKEN.
 on:
   workflow_dispatch:
 
@@ -20,23 +22,35 @@ jobs:
         with:
           lfs: true
 
-      - name: Create one release per surah with mp3 assets
+      - name: Clean up any existing urdu-audio-* releases (fresh slate)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          gh release list --repo "${{ github.repository }}" --limit 1000 --json tagName -q '.[].tagName' \
+            | grep '^urdu-audio-' | while read -r tag; do
+              echo "Deleting existing release $tag"
+              gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag || true
+            done
+
+      - name: Create one release per surah with a zipped mp3 asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/release-assets
           cd audio/urdu
           for dir in */; do
             surah="${dir%/}"
             tag="urdu-audio-$surah"
+            zipfile="/tmp/release-assets/urdu-$surah.zip"
 
-            if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-              echo "Release $tag already exists, skipping"
-              continue
-            fi
+            echo "Zipping surah $surah..."
+            zip -rq "$zipfile" "$surah"
 
             echo "Publishing $tag..."
-            gh release create "$tag" "${dir}"*.mp3 \
+            gh release create "$tag" "$zipfile" \
               --repo "${{ github.repository }}" \
               --title "Urdu Audio - Surah $surah" \
               --notes "Auto-published by CI from LFS storage."
+
+            rm -f "$zipfile"
           done
