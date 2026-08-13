@@ -1,0 +1,42 @@
+name: Publish Urdu Audio Releases
+
+# Manually triggered from the Actions tab. Runs entirely on GitHub's
+# servers — checks out the LFS-tracked mp3s (fast, GitHub's own
+# network) and republishes them as plain Release assets, one release
+# per surah. Release assets aren't subject to Git LFS's 1GB/month
+# bandwidth cap, so this is what the app should actually download
+# from at runtime.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Create one release per surah with mp3 assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd audio/urdu
+          for dir in */; do
+            surah="${dir%/}"
+            tag="urdu-audio-$surah"
+
+            if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+              echo "Release $tag already exists, skipping"
+              continue
+            fi
+
+            echo "Publishing $tag..."
+            gh release create "$tag" "${dir}"*.mp3 \
+              --repo "${{ github.repository }}" \
+              --title "Urdu Audio - Surah $surah" \
+              --notes "Auto-published by CI from LFS storage."
+          done
