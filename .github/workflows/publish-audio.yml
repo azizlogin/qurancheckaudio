@@ -7,7 +7,12 @@ name: Publish Urdu Audio Releases
 #
 # Zipping (rather than one asset per ayah) keeps API calls low —
 # ~340 requests total instead of ~6,500 — to stay under GitHub's
-# hourly rate limit for the built-in GITHUB_TOKEN.
+# hourly rate limit.
+#
+# Uses a Personal Access Token (secret GH_PAT) instead of the default
+# GITHUB_TOKEN — the built-in token's shared 1,000/hour installation
+# quota gets exhausted fast by this many release/asset calls; a PAT
+# has its own separate 5,000/hour account-level quota.
 on:
   workflow_dispatch:
 
@@ -24,7 +29,7 @@ jobs:
 
       - name: Clean up any existing urdu-audio-* releases (fresh slate)
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           gh release list --repo "${{ github.repository }}" --limit 1000 --json tagName -q '.[].tagName' \
             | grep '^urdu-audio-' | while read -r tag; do
@@ -34,7 +39,7 @@ jobs:
 
       - name: Create one release per surah with a zipped mp3 asset
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           mkdir -p /tmp/release-assets
           cd audio/urdu
